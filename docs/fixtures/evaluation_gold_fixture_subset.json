@@ -1,58 +1,58 @@
 {
-  "corpus_note": "Gold edges scoped to respondents 1,2,3,7,20 only — pairs with docs/fixtures/extracted_models_eval_fixture.json",
+  "corpus_note": "Gold edges scoped to respondents 1,2,3,7,20 only — pairs with docs/fixtures/extracted_models_eval_fixture.json. Migrated from `*_substrings` (stems) to `*_aliases` (full words) so the lemmatized matcher in llm_survey.eval.matching can do word-boundary matches.",
   "relationships": [
     {
       "id": "GF01",
-      "from_substrings": ["workload", "deadline"],
-      "to_substrings": ["stress", "overwhelm"],
+      "from_aliases": ["workload", "deadline", "deadlines"],
+      "to_aliases": ["stress", "overwhelm", "overwhelmed"],
       "respondent_hint": "respondent_1"
     },
     {
       "id": "GF02",
-      "from_substrings": ["manager", "guidance"],
-      "to_substrings": ["stress", "worse"],
+      "from_aliases": ["manager guidance", "guidance", "manager"],
+      "to_aliases": ["stress", "worse"],
       "respondent_hint": "respondent_1"
     },
     {
       "id": "GF03",
-      "from_substrings": ["communication"],
-      "to_substrings": ["uncertain", "priorit"],
+      "from_aliases": ["communication", "communication clarity"],
+      "to_aliases": ["uncertainty", "priority", "priorities"],
       "respondent_hint": "respondent_1"
     },
     {
       "id": "GF04",
-      "from_substrings": ["team", "support"],
-      "to_substrings": ["anxiety", "stress"],
+      "from_aliases": ["team", "team support", "support"],
+      "to_aliases": ["anxiety", "stress"],
       "respondent_hint": "respondent_2"
     },
     {
       "id": "GF05",
-      "from_substrings": ["structure", "timeline", "check"],
-      "to_substrings": ["confiden", "productive"],
+      "from_aliases": ["structure", "project structure", "timeline", "check"],
+      "to_aliases": ["confidence", "self-confidence", "productive", "productivity"],
       "respondent_hint": "respondent_3"
     },
     {
       "id": "GF06",
-      "from_substrings": ["control", "schedule"],
-      "to_substrings": ["stress"],
+      "from_aliases": ["control", "schedule control", "schedule"],
+      "to_aliases": ["stress"],
       "respondent_hint": "respondent_7"
     },
     {
       "id": "GF07",
-      "from_substrings": ["meeting", "interrupt"],
-      "to_substrings": ["stress"],
+      "from_aliases": ["meeting", "meeting load", "interrupt", "interruption"],
+      "to_aliases": ["stress"],
       "respondent_hint": "respondent_7"
     },
     {
       "id": "GF08",
-      "from_substrings": ["trust"],
-      "to_substrings": ["confiden", "productiv"],
+      "from_aliases": ["trust", "manager trust"],
+      "to_aliases": ["confidence", "self-confidence", "productivity"],
       "respondent_hint": "respondent_20"
     },
     {
       "id": "GF09",
-      "from_substrings": ["micromanag", "check"],
-      "to_substrings": ["anxiety"],
+      "from_aliases": ["micromanagement", "micromanaging", "check"],
+      "to_aliases": ["anxiety"],
       "respondent_hint": "respondent_20"
     }
   ]
