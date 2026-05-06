@@ -1,5 +1,9 @@
 # Mirrors the repository to a Hugging Face Space when secrets are configured.
 # Required repo secrets: HF_TOKEN, HF_SPACE_REPO (e.g. "username/qualitative-model-drafter").
+#
+# The Space card metadata lives in `.hf-space-card.yml` and is injected into
+# README.md at upload time by `scripts/push_hf_space.py`. This keeps the
+# repo README clean of HF-specific YAML frontmatter.
 
 name: Deploy Hugging Face Space
 
@@ -26,38 +30,8 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_SPACE_REPO: ${{ secrets.HF_SPACE_REPO }}
         run: |
-          python <<'PY'
-          import os
-          import sys
-
-          from huggingface_hub import HfApi
-
-          repo = os.environ.get("HF_SPACE_REPO", "").strip()
-          token = (
-              os.environ.get("HF_TOKEN", "").strip()
-              or os.environ.get("HUGGING_FACE_HUB_TOKEN", "").strip()
-          )
-          if not repo or not token:
-              print("HF_SPACE_REPO or HF_TOKEN missing — skipping deploy.")
-              sys.exit(0)
-
-          api = HfApi(token=token)
-          api.upload_folder(
-              folder_path=".",
-              repo_id=repo,
-              repo_type="space",
-              path_in_repo=".",
-              ignore_patterns=[
-                  ".git/**",
-                  "**/__pycache__/**",
-                  ".env",
-                  ".env.*",
-                  "venv/**",
-                  ".pytest_cache/**",
-                  "data/chroma/**",
-                  "outputs/**",
-                  "data/processed/**",
-              ],
-          )
-          print("Uploaded to Space:", repo)
-          PY
+          if [ -z "${HF_SPACE_REPO}" ] || [ -z "${HF_TOKEN}" ]; then
+            echo "HF_SPACE_REPO or HF_TOKEN missing — skipping deploy."
+            exit 0
+          fi
+          python3 scripts/push_hf_space.py --upload-only

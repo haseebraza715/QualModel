@@ -1,22 +1,3 @@
----
-title: Qualitative model drafter
-emoji: 📎
-colorFrom: gray
-colorTo: blue
-sdk: docker
-pinned: false
-license: mit
-short_description: >-
-  Draft a theoretical model from interview or survey text with quote-level provenance
-  so researchers can verify before they trust.
-tags:
-  - qualitative-research
-  - streamlit
-  - caqdas
-  - nlp
-  - mixed-methods
----
-
 # LLM Survey Model Specification
 
 > **A reproducible research pipeline that turns qualitative survey or interview

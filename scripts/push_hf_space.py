@@ -39,7 +39,28 @@ def _ignore_patterns() -> list[str]:
         "data/embedding_cache/**",
         ".cursor/**",
         "*.pyc",
+        # The HF Space card is injected into README.md at upload time (see
+        # _build_hf_readme below). The raw card file itself is not needed on
+        # the Space.
+        ".hf-space-card.yml",
     ]
+
+
+def _build_hf_readme(repo_root: Path) -> str | None:
+    """Prepend `.hf-space-card.yml` to README.md as YAML frontmatter for HF Spaces.
+
+    Returns the rewritten README text, or None if the card file doesn't exist
+    (in which case the original README is uploaded unchanged).
+    """
+    card = repo_root / ".hf-space-card.yml"
+    readme = repo_root / "README.md"
+    if not card.exists() or not readme.exists():
+        return None
+    body = readme.read_text(encoding="utf-8")
+    # If the README already starts with frontmatter, leave it alone.
+    if body.startswith("---\n"):
+        return None
+    return f"---\n{card.read_text(encoding='utf-8').rstrip()}\n---\n\n{body}"
 
 
 def main() -> None:
@@ -113,14 +134,26 @@ def main() -> None:
                 sys.exit(1)
             raise
 
+    # Build a Space-flavored README (YAML card + repo README body) on the fly.
+    # The original README.md on disk stays clean — we only inject the HF card
+    # for the Space upload itself.
+    hf_readme = _build_hf_readme(root)
+
     print(f"Uploading {root} → {repo_id} …")
     try:
+        if hf_readme is not None:
+            api.upload_file(
+                path_or_fileobj=hf_readme.encode("utf-8"),
+                path_in_repo="README.md",
+                repo_id=repo_id,
+                repo_type="space",
+            )
         api.upload_folder(
             folder_path=str(root),
             repo_id=repo_id,
             repo_type="space",
             path_in_repo=".",
-            ignore_patterns=_ignore_patterns(),
+            ignore_patterns=_ignore_patterns() + (["README.md"] if hf_readme is not None else []),
         )
     except HfHubHTTPError as err:
         status = getattr(err.response, "status_code", None)
