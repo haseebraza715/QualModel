@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-typecheck-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install package + dev tools
+        run: |
+          python -m pip install --upgrade pip
+          # Minimal install for lint/typecheck/eval-stability — full pipeline deps
+          # (chromadb, llama-index, sentence-transformers, bertopic) are heavy and
+          # not exercised by the offline eval test. Add them when running the full
+          # test suite locally.
+          pip install ruff black mypy pytest pytest-cov pyyaml pydantic pydantic-settings structlog
+
+      - name: Ruff
+        run: ruff check src/llm_survey/eval src/llm_survey/config.py src/llm_survey/prompts/registry.py src/llm_survey/logging_config.py scripts/compute_eval_metrics.py scripts/run_ablation.py
+
+      - name: Black --check
+        run: black --check src/llm_survey/eval src/llm_survey/config.py src/llm_survey/prompts/registry.py src/llm_survey/logging_config.py
+
+      - name: Mypy (eval + config + registry)
+        run: mypy src/llm_survey/eval src/llm_survey/config.py src/llm_survey/prompts/registry.py src/llm_survey/logging_config.py
+
+      - name: Eval-stability (bootstrap CIs deterministic)
+        run: |
+          python3 scripts/compute_eval_metrics.py > /tmp/metrics_run1.json
+          python3 scripts/compute_eval_metrics.py > /tmp/metrics_run2.json
+          # Same input + same seed => byte-identical metrics. If this fails, a
+          # nondeterminism bug has been introduced.
+          diff -u /tmp/metrics_run1.json /tmp/metrics_run2.json
