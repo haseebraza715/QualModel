@@ -6,6 +6,7 @@
   "false_negatives": 0,
   "precision": 0.9,
   "recall": 1.0,
+  "f1": 0.947,
   "false_positive_examples": [
     {
       "chunk_id": "respondent_1_chunk_0",
@@ -13,6 +14,61 @@
       "to_variable": "Job crafting"
     }
   ],
+  "bootstrap_ci_95": {
+    "precision": {
+      "point": 0.9,
+      "ci_lo": 0.7,
+      "ci_hi": 1.0,
+      "ci_width": 0.3,
+      "n_resamples": 1000,
+      "confidence": 0.95,
+      "mean": 0.8983,
+      "std": 0.094
+    },
+    "recall": {
+      "point": 1.0,
+      "ci_lo": 1.0,
+      "ci_hi": 1.0,
+      "ci_width": 0.0,
+      "n_resamples": 1000,
+      "confidence": 0.95,
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "f1": {
+      "point": 0.9474,
+      "ci_lo": 0.8235,
+      "ci_hi": 1.0,
+      "ci_width": 0.1765,
+      "n_resamples": 1000,
+      "confidence": 0.95,
+      "mean": 0.9446,
+      "std": 0.0567
+    }
+  },
+  "per_chunk_variance": {
+    "f1": {
+      "n": 5,
+      "mean": 0.9714,
+      "std": 0.0571,
+      "min": 0.8571,
+      "max": 1.0
+    },
+    "precision": {
+      "n": 5,
+      "mean": 0.95,
+      "std": 0.1,
+      "min": 0.75,
+      "max": 1.0
+    },
+    "recall": {
+      "n": 5,
+      "mean": 1.0,
+      "std": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    }
+  },
   "gold_path": "docs/fixtures/evaluation_gold_fixture_subset.json",
   "extractions_path": "docs/fixtures/extracted_models_eval_fixture.json"
 }
