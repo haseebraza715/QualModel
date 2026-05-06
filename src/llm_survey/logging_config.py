@@ -8,6 +8,7 @@ human-readable on a TTY and JSON when piped (e.g. CI / log shipper). Calling
     log = get_logger(__name__)
     log.info("extracted_chunks", n=42, chunk_id="r1c0")
 """
+
 from __future__ import annotations
 
 import logging

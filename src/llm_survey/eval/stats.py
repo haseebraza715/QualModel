@@ -13,14 +13,14 @@ The McNemar test here is the exact mid-p variant for small N; for large N a
 chi-square approximation would be cheaper but unnecessary at our gold-set
 scale.
 """
+
 from __future__ import annotations
 
 import math
 import random
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from statistics import mean, pstdev
-from typing import Callable, Iterable, Sequence
-
 
 Number = float
 
@@ -198,7 +198,7 @@ def mcnemar_exact(b: int, c: int) -> dict[str, float | int]:
     cum = 0.0
     for i in range(k + 1):
         cum += math.comb(n, i)
-    p_one_sided = cum / (2 ** n)
+    p_one_sided = cum / (2**n)
     p_two_sided = min(1.0, 2 * p_one_sided)
     return {"b": b, "c": c, "n_disagreements": n, "p_value": round(p_two_sided, 4)}
 
@@ -228,7 +228,7 @@ __all__ = [
     "BootstrapResult",
     "bootstrap_metric",
     "bootstrap_prf1",
-    "paired_bootstrap_diff",
     "mcnemar_exact",
+    "paired_bootstrap_diff",
     "per_document_variance",
 ]

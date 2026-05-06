@@ -18,15 +18,14 @@ Existing call sites that read env vars directly are NOT yet migrated — the goa
 of this module is to make the migration mechanical and reversible. New code
 should prefer `get_settings()`.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -75,12 +74,8 @@ class Settings(BaseSettings):
     )
 
     # --- Feature toggles ---
-    enable_literature_retrieval: bool = Field(
-        default=True, validation_alias="ENABLE_LITERATURE_RETRIEVAL"
-    )
-    enable_refinement_loop: bool = Field(
-        default=True, validation_alias="ENABLE_REFINEMENT_LOOP"
-    )
+    enable_literature_retrieval: bool = Field(default=True, validation_alias="ENABLE_LITERATURE_RETRIEVAL")
+    enable_refinement_loop: bool = Field(default=True, validation_alias="ENABLE_REFINEMENT_LOOP")
     max_refinement_iterations: int = Field(default=2, validation_alias="MAX_REFINEMENT_ITERATIONS")
     completeness_threshold: float = Field(default=0.75, validation_alias="COMPLETENESS_THRESHOLD")
     literature_target_papers: int = Field(default=20, validation_alias="LITERATURE_TARGET_PAPERS")
@@ -100,4 +95,4 @@ def get_settings() -> Settings:
     return Settings()
 
 
-__all__ = ["Settings", "get_settings", "REPO_ROOT"]
+__all__ = ["REPO_ROOT", "Settings", "get_settings"]

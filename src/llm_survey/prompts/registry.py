@@ -22,6 +22,7 @@ Fallback: if a prompt file is missing, the registry falls back to the
 hard-coded constants in `model_extraction_prompts.py` so existing call sites
 keep working during the migration period.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -30,7 +31,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 REGISTRY_ROOT = Path(__file__).resolve().parent / "registry"
 
@@ -99,4 +100,4 @@ def default_registry() -> PromptRegistry:
     return PromptRegistry()
 
 
-__all__ = ["PromptRegistry", "PromptRecord", "default_registry", "REGISTRY_ROOT"]
+__all__ = ["REGISTRY_ROOT", "PromptRecord", "PromptRegistry", "default_registry"]

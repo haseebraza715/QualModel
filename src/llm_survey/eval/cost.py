@@ -17,16 +17,17 @@ Usage:
 The cost numbers are estimates only — pricing changes constantly. Update
 `USD_PRICES` (per 1M tokens) when you re-run the eval for a paper figure.
 """
+
 from __future__ import annotations
 
 import json
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import mean, pstdev
-from typing import Any, Iterator
-
+from typing import Any
 
 # Indicative OpenRouter / vendor pricing in USD per 1M tokens. These are
 # defaults; override per-run if pricing has shifted.
@@ -133,7 +134,6 @@ class RunRecorder:
             d["wall_seconds_total"] += ev.wall_seconds
             d["per_call_wall_seconds"].append(ev.wall_seconds)
         for phase, d in per_phase.items():
-            calls = d["calls"]
             samples = d.pop("per_call_wall_seconds")
             d["mean_wall_seconds"] = round(mean(samples), 4) if samples else 0.0
             d["std_wall_seconds"] = round(pstdev(samples), 4) if len(samples) > 1 else 0.0
@@ -155,4 +155,4 @@ class RunRecorder:
         Path(path).write_text(json.dumps(self.summary(), indent=2), encoding="utf-8")
 
 
-__all__ = ["RunRecorder", "USD_PRICES", "CallEvent", "PhaseEvent"]
+__all__ = ["USD_PRICES", "CallEvent", "PhaseEvent", "RunRecorder"]

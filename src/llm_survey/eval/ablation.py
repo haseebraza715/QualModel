@@ -18,15 +18,15 @@ Cost note: a full matrix is N variants × pipeline runtime. For the synthetic
 corpus this is fine; for real corpora, run with `--variant single_pass_baseline`
 or a subset first.
 """
+
 from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable
-
-from .stats import bootstrap_prf1, paired_bootstrap_diff
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -234,6 +234,7 @@ def _run_single_pass_baseline(*, input_file: str, output_dir: str, extra: dict[s
     same `extracted_models.json` shape so downstream metrics work.
     """
     import os
+
     from openai import OpenAI
 
     from llm_survey.config import get_settings
@@ -248,8 +249,7 @@ def _run_single_pass_baseline(*, input_file: str, output_dir: str, extra: dict[s
     joined = "\n\n".join(c.get("text", "") for c in chunks)[:18000]
     prompt = (
         "Extract variables and causal relationships from the following survey text. "
-        "Return JSON: {\"relationships\": [{\"from_variable\": str, \"to_variable\": str}]}.\n\n"
-        + joined
+        'Return JSON: {"relationships": [{"from_variable": str, "to_variable": str}]}.\n\n' + joined
     )
     resp = client.chat.completions.create(
         model=cfg.llm_model,
@@ -271,14 +271,12 @@ def _run_single_pass_baseline(*, input_file: str, output_dir: str, extra: dict[s
         }
     ]
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    (Path(output_dir) / "extracted_models.json").write_text(
-        json.dumps(payload, indent=2), encoding="utf-8"
-    )
+    (Path(output_dir) / "extracted_models.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 __all__ = [
-    "AblationVariant",
     "ABLATION_MATRIX",
+    "AblationVariant",
     "VariantResult",
     "run_ablation_matrix",
 ]

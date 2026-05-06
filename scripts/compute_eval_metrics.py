@@ -19,7 +19,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any
 
 # Make `llm_survey` importable when running this script from a source checkout.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -43,8 +43,8 @@ def _load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _iter_relationships(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+def _iter_relationships(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for row in rows:
         if not row.get("success") or not isinstance(row.get("model"), dict):
             continue
@@ -62,7 +62,7 @@ def _iter_relationships(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-def _matches(rel: Dict[str, Any], gold: Dict[str, Any]) -> bool:
+def _matches(rel: dict[str, Any], gold: dict[str, Any]) -> bool:
     """Match an extracted relationship against a gold spec.
 
     Prefers `llm_survey.eval.matching.relationship_matches` (lemmatized,
@@ -83,12 +83,12 @@ def _matches(rel: Dict[str, Any], gold: Dict[str, Any]) -> bool:
     return from_ok and to_ok
 
 
-def evaluate(extractions: List[Dict[str, Any]], gold_doc: Dict[str, Any]) -> Dict[str, Any]:
-    gold_items: List[Dict[str, Any]] = list(gold_doc.get("relationships", []))
+def evaluate(extractions: list[dict[str, Any]], gold_doc: dict[str, Any]) -> dict[str, Any]:
+    gold_items: list[dict[str, Any]] = list(gold_doc.get("relationships", []))
     rels = _iter_relationships(extractions)
 
-    matched_gold: Set[str] = set()
-    false_positives: List[Dict[str, Any]] = []
+    matched_gold: set[str] = set()
+    false_positives: list[dict[str, Any]] = []
 
     for rel in rels:
         hit: str | None = None
@@ -112,7 +112,7 @@ def evaluate(extractions: List[Dict[str, Any]], gold_doc: Dict[str, Any]) -> Dic
 
     f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "gold_items": len(gold_items),
         "extracted_relationships": len(rels),
         "true_positives_matched_gold": tp,
@@ -129,17 +129,19 @@ def evaluate(extractions: List[Dict[str, Any]], gold_doc: Dict[str, Any]) -> Dic
     # contributes one row (gold=False, predicted=True, match=False). Resampling
     # this list with replacement gives the standard non-parametric CI.
     if bootstrap_prf1 is not None:
-        outcome_rows: List[Dict[str, Any]] = []
+        outcome_rows: list[dict[str, Any]] = []
         for g in gold_items:
             gid = str(g.get("id", ""))
-            outcome_rows.append({"gold": True, "predicted": gid in matched_gold, "match": gid in matched_gold})
+            outcome_rows.append(
+                {"gold": True, "predicted": gid in matched_gold, "match": gid in matched_gold}
+            )
         for _ in false_positives:
             outcome_rows.append({"gold": False, "predicted": True, "match": False})
         result["bootstrap_ci_95"] = bootstrap_prf1(outcome_rows, n_resamples=1000, seed=20260101)
 
     # Per-chunk variance: group outcomes by chunk_id and compute precision/recall per chunk.
     if per_document_variance is not None:
-        per_chunk: Dict[str, Dict[str, int]] = {}
+        per_chunk: dict[str, dict[str, int]] = {}
         for rel in rels:
             cid = rel["chunk_id"] or "(unknown)"
             d = per_chunk.setdefault(cid, {"tp": 0, "fp": 0, "fn": 0})
@@ -159,8 +161,8 @@ def evaluate(extractions: List[Dict[str, Any]], gold_doc: Dict[str, Any]) -> Dic
             hint = str(g.get("respondent_hint", "")) or "(unknown)"
             d = per_chunk.setdefault(hint, {"tp": 0, "fp": 0, "fn": 0})
             d["fn"] += 1
-        per_doc_rows: List[Dict[str, float]] = []
-        for cid, counts in per_chunk.items():
+        per_doc_rows: list[dict[str, float]] = []
+        for _cid, counts in per_chunk.items():
             tp_c, fp_c, fn_c = counts["tp"], counts["fp"], counts["fn"]
             p = tp_c / (tp_c + fp_c) if (tp_c + fp_c) else 0.0
             r = tp_c / (tp_c + fn_c) if (tp_c + fn_c) else 0.0

@@ -20,10 +20,11 @@ a more careful one that:
 The legacy substring fields keep working unchanged — this module is additive,
 so existing gold files don't need to be migrated immediately.
 """
+
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 # Trivial English suffix lemmatizer — strips a handful of high-impact endings.
 # Not Porter-quality but good enough to make {"crafting" ↔ "craft"} match.

@@ -8,6 +8,7 @@ hash, git commit, wall clock, and an optional pointer to a W&B / MLflow run.
 The goal is that a paper figure can cite a `runlog.json` and a reader can
 diff it against a fresh run to localise any drift.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -91,7 +92,7 @@ class RunLog:
         Path(path).write_text(json.dumps(self.__dict__, indent=2, default=str), encoding="utf-8")
 
     @classmethod
-    def from_settings(cls, *, run_id: str, settings, prompt_registry=None) -> "RunLog":
+    def from_settings(cls, *, run_id: str, settings, prompt_registry=None) -> RunLog:
         log = cls(
             run_id=run_id,
             model=settings.llm_model,

@@ -53,9 +53,7 @@ def main() -> None:
         names = set(args.variant)
         variants = [v for v in ABLATION_MATRIX if v.name in names]
         if not variants:
-            raise SystemExit(
-                f"No matching variants. Known: {[v.name for v in ABLATION_MATRIX]}"
-            )
+            raise SystemExit(f"No matching variants. Known: {[v.name for v in ABLATION_MATRIX]}")
     else:
         variants = list(ABLATION_MATRIX)
 
