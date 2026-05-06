@@ -12,8 +12,12 @@ import sys
 from typing import Any, Dict
 from dotenv import load_dotenv
 
-# Ensure src package is importable in local runs.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+# When running from a source checkout without `pip install -e .`, ensure the
+# in-tree `src/` is importable. Once the package is installed, this is a no-op.
+try:  # pragma: no cover - trivial import guard
+    import llm_survey  # noqa: F401
+except ModuleNotFoundError:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 # Load environment variables
 load_dotenv()
@@ -61,13 +65,16 @@ def run_complete_pipeline(
     print("Starting LLM Model Specification Pipeline")
     print("=" * 50)
     
-    # Initialize extractor
+    # Initialize extractor. Settings provides typed defaults for temperature
+    # and headers; explicit args still win.
+    from llm_survey.config import get_settings
+    cfg = get_settings()
     extractor = RAGModelExtractor(
         openai_api_key=openrouter_api_key or os.getenv("OPENROUTER_API_KEY", ""),
         llm_model=llm_model,
         base_url=base_url,
-        extra_headers=extra_headers or {},
-        temperature=0.1,
+        extra_headers=extra_headers or cfg.http_extra_headers(),
+        temperature=cfg.llm_temperature,
         enable_literature_retrieval=enable_literature_retrieval,
     )
     
@@ -272,7 +279,8 @@ def run_interactive_mode():
     # Get API key
     api_key = input("Enter OpenRouter API key (or press Enter to use environment variable): ").strip()
     if not api_key:
-        api_key = os.getenv("OPENROUTER_API_KEY")
+        from llm_survey.config import get_settings
+        api_key = get_settings().openrouter_api_key
         if not api_key:
             print("No API key provided")
             return
