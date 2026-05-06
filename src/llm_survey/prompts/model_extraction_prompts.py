@@ -1,9 +1,27 @@
+"""Prompt templates for the extraction pipeline.
+
+Historical note: these constants are now thin wrappers around the versioned
+prompt registry in `llm_survey/prompts/registry/`. The registry is the single
+source of truth — editing the .md files there will update these constants on
+next import. The fallback string literals below are kept so the package still
+works if the registry is missing or fails to load (e.g. partial install).
+"""
 from typing import Any, Dict
 
 from llm_survey.utils.prompt_safety import build_structured_extraction_user_message
 
+
+def _load_or_default(name: str, default: str) -> str:
+    """Load a prompt from the registry; fall back to the bundled literal."""
+    try:
+        from llm_survey.prompts.registry import default_registry
+        return default_registry().text(name)
+    except Exception:
+        return default
+
+
 # Base prompt for extracting variables and relationships
-BASE_EXTRACTION_PROMPT = """You are an AI scientific assistant specialized in extracting variables and relationships from qualitative survey data.
+_BASE_EXTRACTION_FALLBACK = """You are an AI scientific assistant specialized in extracting variables and relationships from qualitative survey data.
 
 Given the following qualitative survey excerpt, extract:
 1. Key variables (with clear, concise descriptions)
@@ -47,7 +65,7 @@ IMPORTANT QUALITY REQUIREMENTS:
 Return only valid YAML without any markdown formatting."""
 
 # Enhanced prompt with RAG context
-RAG_ENHANCED_PROMPT = """You are an AI scientific assistant specialized in extracting variables and relationships from qualitative survey data.
+_RAG_ENHANCED_FALLBACK = """You are an AI scientific assistant specialized in extracting variables and relationships from qualitative survey data.
 
 You have access to relevant context from similar survey responses and research documents. Use this context to enhance your understanding and provide more comprehensive model specifications.
 
@@ -99,7 +117,7 @@ IMPORTANT QUALITY REQUIREMENTS:
 Return only valid YAML without any markdown formatting."""
 
 # Prompt for thematic analysis
-THEMATIC_ANALYSIS_PROMPT = """You are an AI assistant specialized in thematic analysis of qualitative data.
+_THEMATIC_ANALYSIS_FALLBACK = """You are an AI assistant specialized in thematic analysis of qualitative data.
 
 Analyze the following text excerpts and identify:
 1. Recurring themes or patterns
@@ -131,7 +149,7 @@ Text Excerpts:
 Please provide a comprehensive analysis that could guide further research."""
 
 # Prompt for model refinement
-MODEL_REFINEMENT_PROMPT = """You are an AI assistant helping to refine and validate scientific model specifications.
+_MODEL_REFINEMENT_FALLBACK = """You are an AI assistant helping to refine and validate scientific model specifications.
 
 Review the following model specification and suggest improvements:
 
@@ -172,7 +190,7 @@ AdditionalConsiderations:
   - Consideration2: Another consideration"""
 
 
-EXTRACTION_SYSTEM_PROMPT = """You are a senior qualitative research extraction assistant.
+_EXTRACTION_SYSTEM_FALLBACK = """You are a senior qualitative research extraction assistant.
 
 Return only schema-valid JSON for the requested response model.
 Keep outputs grounded in the provided chunk text.
@@ -184,6 +202,19 @@ For every variable, relationship, hypothesis, and moderator:
 - evidence_strength: "direct" if the participant literally stated the construct; "inferred" if it is a reasonable
   reading but not explicit; "weak" if evidence is a single ambiguous phrase or very thin.
 """
+
+
+# --------------------------------------------------------------------------
+# Public constants — resolved from the prompt registry at import time so the
+# .md files under `prompts/registry/v1.0/` are the single source of truth.
+# The `_FALLBACK` literals above are only used when the registry is missing
+# (partial install, broken file, etc.).
+# --------------------------------------------------------------------------
+BASE_EXTRACTION_PROMPT = _load_or_default("base_extraction", _BASE_EXTRACTION_FALLBACK)
+RAG_ENHANCED_PROMPT = _load_or_default("rag_enhanced", _RAG_ENHANCED_FALLBACK)
+THEMATIC_ANALYSIS_PROMPT = _load_or_default("thematic_analysis", _THEMATIC_ANALYSIS_FALLBACK)
+MODEL_REFINEMENT_PROMPT = _load_or_default("model_refinement", _MODEL_REFINEMENT_FALLBACK)
+EXTRACTION_SYSTEM_PROMPT = _load_or_default("extraction_system", _EXTRACTION_SYSTEM_FALLBACK)
 
 
 def get_prompt_template(prompt_type: str = "base") -> str:
