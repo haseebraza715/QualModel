@@ -20,13 +20,17 @@ from llm_survey.agents import (
     LiteratureValidator,
     ModelConsolidator,
 )
+from llm_survey.eval.cost import RunRecorder
+from llm_survey.eval.runlog import RunLog
 from llm_survey.prompts.model_extraction_prompts import (
     EXTRACTION_SYSTEM_PROMPT,
     format_structured_extraction_prompt,
 )
+from llm_survey.prompts.registry import default_registry
 from llm_survey.rag import CachedEmbedder, LiteratureStore, PubMedClient, SemanticScholarClient, SurveyStore
 from llm_survey.schemas.consolidation import ConsolidatedModel, ScoredHypothesis
 from llm_survey.schemas.extraction import ChunkExtractionResult
+from llm_survey.utils.cost_estimate import count_tokens
 from llm_survey.utils.export_reports import (
     build_causal_graph_html,
     build_evidence_report_markdown,
@@ -91,7 +95,7 @@ class RAGModelExtractor:
         llm_model: str = "google/gemma-4-31b-it",
         embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
         base_url: str = "https://openrouter.ai/api/v1",
-        temperature: float = 0.1,
+        temperature: float = 0.0,
         extra_headers: Dict[str, str] | None = None,
         survey_chroma_path: str = "data/chroma/survey",
         survey_collection: str = "survey",
@@ -101,6 +105,10 @@ class RAGModelExtractor:
         enable_literature_retrieval: bool = True,
         literature_target_papers: int = 20,
     ):
+        # Read directly from env vars (populated by `load_dotenv()` in entry
+        # points). The typed Settings object is used elsewhere; here we keep
+        # env-var semantics so tests can `monkeypatch.delenv` to assert this
+        # constructor refuses to run without a key.
         api_key = openai_api_key or os.getenv("OPENROUTER_API_KEY")
         if not api_key:
             raise ValueError("OpenRouter API key is required (OPENROUTER_API_KEY).")
@@ -142,6 +150,88 @@ class RAGModelExtractor:
 
         self.processed_chunks: List[Dict[str, Any]] = []
         self.run_id: str = generate_run_id("pipeline")
+
+        # Provenance and cost tracking — every LLM call is recorded against the
+        # currently-active phase (set via `with self.recorder.phase(name): ...`).
+        # See dump_run_artifacts() to persist the report alongside outputs.
+        self.recorder = RunRecorder(model=self.llm_model)
+        self.run_log = RunLog(
+            run_id=self.run_id,
+            model=self.llm_model,
+            temperature=float(self.temperature),
+            seed=20260101,
+            embedding_model=self.embedding_model_name,
+        )
+        try:
+            registry = default_registry()
+            for version in registry.list_versions():
+                for md in (registry.root / version).glob("*.md"):
+                    rec = registry.get(md.stem, version=version)
+                    self.run_log.attach_prompt(f"{version}/{md.stem}", rec.sha256)
+        except Exception:  # pragma: no cover - registry is optional
+            pass
+        self.run_log.attach_lockfile_hash()
+
+    @staticmethod
+    def _usage_from_raw(raw: Any) -> tuple[int | None, int | None]:
+        """Extract (prompt_tokens, completion_tokens) from a raw ChatCompletion.
+
+        Returns (None, None) if the SDK didn't surface a `usage` field — caller
+        should then fall back to a tiktoken estimate.
+        """
+        usage = getattr(raw, "usage", None) if raw is not None else None
+        if usage is None:
+            return None, None
+        prompt = getattr(usage, "prompt_tokens", None)
+        completion = getattr(usage, "completion_tokens", None)
+        if prompt is None or completion is None:
+            return None, None
+        try:
+            return int(prompt), int(completion)
+        except (TypeError, ValueError):
+            return None, None
+
+    def _record_llm_call(
+        self,
+        *,
+        phase: str | None,
+        wall_seconds: float,
+        prompt_text: str,
+        completion_text: str = "",
+        raw_completion: Any = None,
+    ) -> None:
+        """Record one LLM call. Uses real `usage` tokens when the SDK returns
+        them; otherwise falls back to a tiktoken estimate from string lengths.
+
+        Both LLM call sites (`extract_model_from_chunk` via instructor's
+        structured-output mode, and `_call_yaml` via the raw OpenAI client)
+        funnel through here so the timing/recording pattern lives in one place.
+        """
+        p_toks, c_toks = self._usage_from_raw(raw_completion)
+        if p_toks is None or c_toks is None:
+            try:
+                p_toks = count_tokens(prompt_text or "", self.llm_model)
+                c_toks = count_tokens(completion_text or "", self.llm_model)
+            except Exception:
+                p_toks, c_toks = 0, 0
+        self.recorder.record_llm_call(
+            prompt_tokens=int(p_toks or 0),
+            completion_tokens=int(c_toks or 0),
+            wall_seconds=wall_seconds,
+            phase=phase,
+        )
+
+    def dump_run_artifacts(self, output_dir: str) -> Dict[str, str]:
+        """Write `cost_report.json` + `runlog.json` for the current run.
+
+        Safe to call multiple times; later calls overwrite earlier ones.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        cost_path = os.path.join(output_dir, "cost_report.json")
+        runlog_path = os.path.join(output_dir, "runlog.json")
+        self.recorder.dump(cost_path)
+        self.run_log.dump(runlog_path)
+        return {"cost_report": cost_path, "runlog": runlog_path}
 
     @staticmethod
     def _write_json(path: str, payload: Any) -> None:
@@ -322,8 +412,17 @@ class RAGModelExtractor:
             "failure_kind": None,
         }
 
+        import time as _time
+        _t0 = _time.perf_counter()
+        _full_prompt = EXTRACTION_SYSTEM_PROMPT + "\n" + prompt
+        _raw_completion: Any = None
         try:
-            response_model = self.structured_client.chat.completions.create(
+            # Prefer `create_with_completion` so we can read real
+            # `usage.prompt_tokens` / `completion_tokens` from the raw chat
+            # completion. Fall back to `create(...)` for older `instructor`
+            # versions and for test mocks that only stub `create`.
+            _completions = self.structured_client.chat.completions
+            _create_kwargs = dict(
                 model=self.llm_model,
                 temperature=self.temperature,
                 response_model=ChunkExtractionResult,
@@ -333,7 +432,17 @@ class RAGModelExtractor:
                     {"role": "user", "content": prompt},
                 ],
             )
+            if hasattr(_completions, "create_with_completion"):
+                response_model, _raw_completion = _completions.create_with_completion(**_create_kwargs)
+            else:
+                response_model = _completions.create(**_create_kwargs)
+                _raw_completion = None
         except (RateLimitError, APITimeoutError, APIConnectionError, AuthenticationError, BadRequestError, APIError) as err:
+            self._record_llm_call(
+                phase="extraction",
+                wall_seconds=_time.perf_counter() - _t0,
+                prompt_text=_full_prompt,
+            )
             return {
                 **base_out,
                 "model": None,
@@ -343,6 +452,11 @@ class RAGModelExtractor:
                 "failure_kind": "api_error",
             }
         except (ValidationError, json.JSONDecodeError, TypeError, ValueError) as err:
+            self._record_llm_call(
+                phase="extraction",
+                wall_seconds=_time.perf_counter() - _t0,
+                prompt_text=_full_prompt,
+            )
             return {
                 **base_out,
                 "model": None,
@@ -351,6 +465,15 @@ class RAGModelExtractor:
                 "error": str(err),
                 "failure_kind": "parse_error",
             }
+
+        _completion_text = response_model.model_dump_json()
+        self._record_llm_call(
+            phase="extraction",
+            wall_seconds=_time.perf_counter() - _t0,
+            prompt_text=_full_prompt,
+            completion_text=_completion_text,
+            raw_completion=_raw_completion,
+        )
 
         model_dict = response_model.model_dump()
         _inject_provenance(model_dict, chunk_id)
@@ -387,20 +510,21 @@ class RAGModelExtractor:
 
         results: List[Dict[str, Any]] = []
         print(f"Extracting models from {len(self.processed_chunks)} chunks...")
-        for i, chunk in enumerate(self.processed_chunks, start=1):
-            print(f"Processing chunk {i}/{len(self.processed_chunks)}")
-            result = self.extract_model_from_chunk(
-                chunk_text=chunk["text"],
-                use_rag=use_rag,
-                num_context_docs=num_context_docs,
-                num_literature_docs=num_literature_docs,
-                enriched_context=enriched_context,
-                chunk_id=str(chunk.get("id", "")),
-            )
-            result["chunk_id"] = chunk["id"]
-            result["chunk_metadata"] = chunk["metadata"]
-            result["chunk_text"] = chunk["text"]
-            results.append(result)
+        with self.recorder.phase("extraction"):
+            for i, chunk in enumerate(self.processed_chunks, start=1):
+                print(f"Processing chunk {i}/{len(self.processed_chunks)}")
+                result = self.extract_model_from_chunk(
+                    chunk_text=chunk["text"],
+                    use_rag=use_rag,
+                    num_context_docs=num_context_docs,
+                    num_literature_docs=num_literature_docs,
+                    enriched_context=enriched_context,
+                    chunk_id=str(chunk.get("id", "")),
+                )
+                result["chunk_id"] = chunk["id"]
+                result["chunk_metadata"] = chunk["metadata"]
+                result["chunk_text"] = chunk["text"]
+                results.append(result)
 
         if save_results:
             suffix = f"_{output_suffix}" if output_suffix else ""
@@ -422,8 +546,9 @@ class RAGModelExtractor:
         output_suffix: str = "",
     ) -> Dict[str, Any]:
         """Detect cross-chunk gaps and score completeness/testability."""
-        report_model = self.gap_detector.detect(extraction_results)
-        report = report_model.model_dump()
+        with self.recorder.phase("gap_detection"):
+            report_model = self.gap_detector.detect(extraction_results)
+            report = report_model.model_dump()
 
         if save_results:
             suffix = f"_{output_suffix}" if output_suffix else ""
@@ -444,12 +569,13 @@ class RAGModelExtractor:
         output_suffix: str = "",
     ) -> Dict[str, Any]:
         """Convert gap report into actionable clarification questions."""
-        plan_model = self.clarification_agent.build_plan(
-            gap_report=gap_report,
-            literature_store=self.literature_store,
-            auto_answer_top_k=auto_answer_top_k,
-        )
-        plan = plan_model.model_dump()
+        with self.recorder.phase("clarification"):
+            plan_model = self.clarification_agent.build_plan(
+                gap_report=gap_report,
+                literature_store=self.literature_store,
+                auto_answer_top_k=auto_answer_top_k,
+            )
+            plan = plan_model.model_dump()
 
         if save_results:
             suffix = f"_{output_suffix}" if output_suffix else ""
@@ -609,21 +735,22 @@ class RAGModelExtractor:
         save_results: bool = True,
     ) -> Dict[str, Any]:
         """Run consolidation, conflict detection, literature validation, and final exports."""
-        consolidated_model = self.consolidate_model(
-            extraction_results=extraction_results,
-            gap_report=gap_report,
-            clarification_plan=clarification_plan,
-            save_results=False,
-        )
-        conflict_report = self.detect_conflicts(
-            consolidated_model=consolidated_model,
-            extraction_results=extraction_results,
-            save_results=False,
-        )
-        validation_report = self.validate_hypotheses(
-            consolidated_model=consolidated_model,
-            save_results=False,
-        )
+        with self.recorder.phase("consolidation"):
+            consolidated_model = self.consolidate_model(
+                extraction_results=extraction_results,
+                gap_report=gap_report,
+                clarification_plan=clarification_plan,
+                save_results=False,
+            )
+            conflict_report = self.detect_conflicts(
+                consolidated_model=consolidated_model,
+                extraction_results=extraction_results,
+                save_results=False,
+            )
+            validation_report = self.validate_hypotheses(
+                consolidated_model=consolidated_model,
+                save_results=False,
+            )
         merged_model = self._merge_validation_into_model(
             consolidated_model=consolidated_model,
             conflict_report=conflict_report,
@@ -645,6 +772,12 @@ class RAGModelExtractor:
             output_dir=output_dir,
             save_results=save_results,
         )
+        if save_results:
+            try:
+                self.dump_run_artifacts(output_dir)
+            except Exception:  # pragma: no cover - artifact dump must never break the pipeline
+                pass
+
         return {
             "consolidated_model": merged_model,
             "conflict_report": conflict_report,
@@ -842,6 +975,9 @@ class RAGModelExtractor:
         return ""
 
     def _call_yaml(self, prompt: str) -> Dict[str, Any]:
+        import time as _time
+        _t0 = _time.perf_counter()
+        completion: Any = None
         try:
             completion = self.client.chat.completions.create(
                 model=self.llm_model,
@@ -853,7 +989,19 @@ class RAGModelExtractor:
             )
             raw_response = self._safe_completion_text(completion)
         except (RateLimitError, APITimeoutError, APIConnectionError, AuthenticationError, BadRequestError, APIError) as err:
+            self._record_llm_call(
+                phase=None,
+                wall_seconds=_time.perf_counter() - _t0,
+                prompt_text=prompt,
+            )
             return {"payload": None, "raw_response": "", "success": False, "error": str(err)}
+        self._record_llm_call(
+            phase=None,
+            wall_seconds=_time.perf_counter() - _t0,
+            prompt_text=prompt,
+            completion_text=raw_response,
+            raw_completion=completion,
+        )
         try:
             return {"payload": yaml.safe_load(raw_response), "raw_response": raw_response, "success": True}
         except yaml.YAMLError as err:
@@ -869,7 +1017,8 @@ class RAGModelExtractor:
 
         prompt = build_thematic_analysis_user_message(combined_text)
 
-        response = self._call_yaml(prompt)
+        with self.recorder.phase("thematic_analysis"):
+            response = self._call_yaml(prompt)
         result = {
             "thematic_analysis": response.get("payload"),
             "raw_response": response.get("raw_response"),
@@ -900,7 +1049,8 @@ class RAGModelExtractor:
 
         prompt = build_refinement_user_message(model_yaml, context)
 
-        response = self._call_yaml(prompt)
+        with self.recorder.phase("refinement"):
+            response = self._call_yaml(prompt)
         result = {
             "refined_model": response.get("payload"),
             "raw_response": response.get("raw_response"),
