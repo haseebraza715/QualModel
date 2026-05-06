@@ -23,23 +23,55 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install package + dev tools
+      - name: Install minimal dev tools
         run: |
           python -m pip install --upgrade pip
-          # Minimal install for lint/typecheck/eval-stability — full pipeline deps
-          # (chromadb, llama-index, sentence-transformers, bertopic) are heavy and
-          # not exercised by the offline eval test. Add them when running the full
-          # test suite locally.
-          pip install ruff black mypy pytest pytest-cov pyyaml pydantic pydantic-settings structlog
+          # Only the deps needed for lint/typecheck/eval-stability. Full pipeline
+          # deps (chromadb, llama-index, sentence-transformers, bertopic) are
+          # heavy and unnecessary for the offline checks below.
+          pip install ruff black mypy pytest pyyaml pydantic pydantic-settings structlog hypothesis
 
       - name: Ruff
-        run: ruff check src/llm_survey/eval src/llm_survey/config.py src/llm_survey/prompts/registry.py src/llm_survey/logging_config.py scripts/compute_eval_metrics.py scripts/run_ablation.py
+        run: |
+          ruff check \
+            src/llm_survey/eval \
+            src/llm_survey/config.py \
+            src/llm_survey/prompts/registry.py \
+            src/llm_survey/logging_config.py \
+            scripts/compute_eval_metrics.py \
+            scripts/run_ablation.py
 
       - name: Black --check
-        run: black --check src/llm_survey/eval src/llm_survey/config.py src/llm_survey/prompts/registry.py src/llm_survey/logging_config.py
+        run: |
+          black --check \
+            src/llm_survey/eval \
+            src/llm_survey/config.py \
+            src/llm_survey/prompts/registry.py \
+            src/llm_survey/logging_config.py \
+            scripts/compute_eval_metrics.py \
+            scripts/run_ablation.py
 
-      - name: Mypy (eval + config + registry)
-        run: mypy src/llm_survey/eval src/llm_survey/config.py src/llm_survey/prompts/registry.py src/llm_survey/logging_config.py
+      - name: Mypy (leaf modules only)
+        # Narrow scope intentionally: only the modules that don't pull in heavy
+        # untyped deps (chromadb, llama-index, instructor) at import time.
+        run: |
+          mypy \
+            src/llm_survey/eval/stats.py \
+            src/llm_survey/eval/cost.py \
+            src/llm_survey/eval/runlog.py \
+            src/llm_survey/eval/matching.py \
+            src/llm_survey/config.py \
+            src/llm_survey/prompts/registry.py \
+            src/llm_survey/logging_config.py
+
+      - name: Unit tests for new modules
+        run: |
+          PYTHONPATH=src pytest -q \
+            tests/test_eval_stats.py \
+            tests/test_eval_cost_runlog.py \
+            tests/test_eval_matching.py \
+            tests/test_prompt_registry.py \
+            tests/test_config.py
 
       - name: Eval-stability (bootstrap CIs deterministic)
         run: |
